@@ -15,7 +15,7 @@ def doc_to_excel(doc_path: str, query: str, output_filename: str = None) -> dict
     """complete workflow to transform a document with the requirements a user specifies into an excel file"""
 
     try:
-        print("📄 Reading document...")
+        print("Reading document...")
         reader = DocumentReader()
         
         if not reader.validate_file(doc_path):
@@ -36,11 +36,11 @@ def doc_to_excel(doc_path: str, query: str, output_filename: str = None) -> dict
                 "extracted_data": None
             }
         
-        print("🎯 Processing extraction requirements...")
+        print("Processing extraction requirements...")
         extraction_prompt = extract_requirements(query)
         
         # Step 3: Extract data using AI
-        print("🤖 Extracting data with AI...")
+        print("Extracting data with AI...")
         extracted_json = extract_data_from_doc(
             query=query,
             document=doc_path
@@ -59,14 +59,14 @@ def doc_to_excel(doc_path: str, query: str, output_filename: str = None) -> dict
             }
         
         # Step 4: Generate Excel
-        print("📊 Creating Excel file...")
+        print("Creating Excel file...")
         if not output_filename:
             doc_name = Path(doc_path).stem
             output_filename = f"{doc_name}_extracted.xlsx"
         
         excel_path = json_to_excel(extracted_data, output_filename)
         
-        print(f"✅ Success! Excel saved to: {excel_path}")
+        print(f"Success! Excel saved to: {excel_path}")
         
         return {
             "status": "success",

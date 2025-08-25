@@ -18,13 +18,13 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 @app.post("/upload")
 async def upload_and_process(
-    files: List[UploadFile] = File(...),
+    filess: List[UploadFile] = File(...),
     query: str = Form(...)
 ):
     """Upload document(s) and extract data to Excel"""
     
     # Validate files
-    if not files:
+    if not filess:
         raise HTTPException(status_code=400, detail="No files provided")
     
     allowed_extensions = ['.pdf', '.png', '.jpg', '.jpeg', '.txt', '.docx']
@@ -32,7 +32,7 @@ async def upload_and_process(
     
     try:
         # Save all uploaded files
-        for file in files:
+        for file in filess:
             if not file.filename:
                 raise HTTPException(status_code=400, detail="File without name provided")
             
@@ -54,7 +54,7 @@ async def upload_and_process(
             temp_paths.append(str(temp_path))
         
         # Process based on number of files
-        if len(files) == 1:
+        if len(filess) == 1:
             # Single document processing
             result = doc_to_excel(
                 doc_path=temp_paths[0],
