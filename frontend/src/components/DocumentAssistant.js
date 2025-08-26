@@ -45,46 +45,197 @@ const DocumentAssistant = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [extractionQuery, setExtractionQuery] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [isMultipleMode, setIsMultipleMode] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [reportGenerated, setReportGenerated] = useState(false);
 
   const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      setUploadedFile(file);
+    const files = Array.from(event.target.files);
+    
+    if (files.length > 0) {
+      if (files.length === 1) {
+        setUploadedFile(files[0]);
+        setUploadedFiles([]);
+        setIsMultipleMode(false);
+      } else {
+        setUploadedFiles(files);
+        setUploadedFile(null);
+        setIsMultipleMode(true);
+      }
       setCurrentStep(2);
     }
   };
 
   const handleExtraction = async () => {
-    if (!extractionQuery.trim()) return;
+    if (!extractionQuery.trim() || (!uploadedFile && uploadedFiles.length === 0)) return;
     
     setProcessing(true);
     setCurrentStep(3);
     
-    setTimeout(() => {
-      setExtractedData({
-        rows: 15,
-        columns: ['Company', 'Revenue', 'Date', 'Status'],
-        preview: [
-          ['Acme Corp', '$1.2M', '2024-01-15', 'Active'],
-          ['Tech Solutions', '$850K', '2024-02-01', 'Pending'],
-          ['Global Industries', '$2.1M', '2024-01-28', 'Active']
-        ]
+    const formData = new FormData();
+    
+    // Add files to form data
+    if (isMultipleMode) {
+      uploadedFiles.forEach(file => {
+        formData.append('filess', file);
       });
+    } else {
+      formData.append('filess', uploadedFile);
+    }
+    
+    formData.append('query', extractionQuery);
+    
+    try {
+      const response = await fetch('/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+          // Handle different data formats from backend
+          let extractedData = result.extracted_data;
+          let columns = [];
+          let rows = 0;
+          let preview = [];
+          
+          if (Array.isArray(extractedData) && extractedData.length > 0) {
+            // Data is an array of objects
+            rows = extractedData.length;
+            columns = Object.keys(extractedData[0]);
+            preview = extractedData.slice(0, 5);
+          } else if (extractedData && typeof extractedData === 'object') {
+            // Data is a single object, convert to array
+            rows = 1;
+            columns = Object.keys(extractedData);
+            preview = [extractedData];
+            extractedData = [extractedData];
+          } else {
+            // Fallback for other data formats
+            rows = 0;
+            columns = ['Data'];
+            preview = [];
+            extractedData = [];
+          }
+          
+          setExtractedData({
+            rows,
+            columns,
+            preview,
+            download_url: result.download_url,
+            full_data: extractedData
+          });
+          setCurrentStep(4);
+        } else {
+          throw new Error(result.message || 'Extraction failed');
+        }
+      } else {
+        const error = await response.json();
+        throw new Error(error.detail || 'Extraction failed');
+      }
+    } catch (error) {
+      console.error('Extraction failed:', error);
+      alert(`Extraction failed: ${error.message}`);
+      setCurrentStep(2); // Go back to step 2
+    } finally {
       setProcessing(false);
-      setCurrentStep(4);
-    }, 3000);
+    }
   };
 
-  const generateReport = () => {
+  const generateReport = async () => {
     setProcessing(true);
-    setTimeout(() => {
-      setReportGenerated(true);
+    
+    // For now, generate a simple report based on extracted data
+    try {
+      // Simulate report generation since your backend doesn't have this endpoint yet
+      setTimeout(() => {
+        setReportGenerated(true);
+        setCurrentStep(5);
+        setProcessing(false);
+      }, 2000);
+    } catch (error) {
+      console.error('Report generation failed:', error);
+      alert('Report generation failed. Please try again.');
       setProcessing(false);
-      setCurrentStep(5);
-    }, 2000);
+    }
+  };
+
+  const downloadExcel = async () => {
+    if (!extractedData?.download_url) {
+      alert('No Excel file available for download');
+      return;
+    }
+    
+    try {
+      // Extract filename from download_url (e.g., "/download/filename.xlsx")
+      const filename = extractedData.download_url.split('/').pop();
+      
+      const response = await fetch(`/download/${filename}`);
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        
+        // Optional: Clean up the file on server
+        await fetch(`/cleanup/${filename}`, { method: 'DELETE' });
+      } else {
+        throw new Error('Download failed');
+      }
+    } catch (error) {
+      console.error('Excel download failed:', error);
+      alert('Excel download failed. Please try again.');
+    }
+  };
+
+  const downloadReport = async () => {
+    if (!extractedData?.full_data) {
+      alert('No data available for report generation');
+      return;
+    }
+    
+    // Generate a simple text report since PDF generation isn't in your backend yet
+    const reportContent = generateTextReport(extractedData.full_data);
+    const blob = new Blob([reportContent], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'analysis_report.txt';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const generateTextReport = (data) => {
+    if (!data || data.length === 0) return 'No data available for report.';
+    
+    const totalRows = data.length;
+    const columns = Object.keys(data[0]);
+    
+    let report = `DOCUMENT ANALYSIS REPORT\n`;
+    report += `Generated: ${new Date().toLocaleString()}\n`;
+    report += `Query: ${extractionQuery}\n\n`;
+    
+    report += `EXECUTIVE SUMMARY\n`;
+    report += `- Total records extracted: ${totalRows}\n`;
+    report += `- Data fields identified: ${columns.join(', ')}\n\n`;
+    
+    report += `DETAILED DATA\n`;
+    data.forEach((row, index) => {
+      report += `\nRecord ${index + 1}:\n`;
+      Object.entries(row).forEach(([key, value]) => {
+        report += `  ${key}: ${value}\n`;
+      });
+    });
+    
+    return report;
   };
 
   return (
@@ -185,7 +336,7 @@ const DocumentAssistant = () => {
             <div style={{display: 'flex', alignItems: 'center', marginBottom: '1rem'}}>
               <FileText size={24} color="#2563eb" style={{marginRight: '12px'}} />
               <h2 style={{fontSize: '1.25rem', fontWeight: '600', margin: 0}}>
-                Step 2: What data do you want to extract?
+                Step 2: What data do you want to extract{isMultipleMode ? ' from all documents' : ''}?
               </h2>
               {extractionQuery && currentStep > 2 && (
                 <CheckCircle size={20} color="#10b981" style={{marginLeft: 'auto'}} />
@@ -196,7 +347,10 @@ const DocumentAssistant = () => {
               <textarea
                 value={extractionQuery}
                 onChange={(e) => setExtractionQuery(e.target.value)}
-                placeholder="Describe what data you want to extract in plain English. For example: 'Extract all company names, their revenue figures, and contract dates from this document'"
+                placeholder={isMultipleMode 
+                  ? "Describe what data you want to extract from all documents. For example: 'Extract all company names, revenue figures, and contract dates from these documents and combine them into one table'"
+                  : "Describe what data you want to extract in plain English. For example: 'Extract all company names, their revenue figures, and contract dates from this document'"
+                }
                 style={{
                   width: '100%',
                   padding: '1rem',
@@ -231,12 +385,19 @@ const DocumentAssistant = () => {
           <div style={styles.card}>
             <div style={{display: 'flex', alignItems: 'center', marginBottom: '1rem'}}>
               <Loader2 size={24} color="#2563eb" style={{marginRight: '12px', animation: 'spin 1s linear infinite'}} />
-              <h2 style={{fontSize: '1.25rem', fontWeight: '600', margin: 0}}>Step 3: Processing Document</h2>
+              <h2 style={{fontSize: '1.25rem', fontWeight: '600', margin: 0}}>
+                Step 3: Processing Document{isMultipleMode ? 's' : ''}
+              </h2>
             </div>
             
             <div style={{textAlign: 'center', padding: '2rem'}}>
               <Loader2 size={48} color="#2563eb" style={{margin: '0 auto 1rem', animation: 'spin 1s linear infinite'}} />
-              <p style={{color: '#6b7280'}}>Analyzing document and extracting requested data...</p>
+              <p style={{color: '#6b7280'}}>
+                {isMultipleMode 
+                  ? `Analyzing ${uploadedFiles.length} documents and extracting requested data...`
+                  : 'Analyzing document and extracting requested data...'
+                }
+              </p>
             </div>
           </div>
         )}
@@ -246,7 +407,9 @@ const DocumentAssistant = () => {
           <div style={styles.card}>
             <div style={{display: 'flex', alignItems: 'center', marginBottom: '1rem'}}>
               <CheckCircle size={24} color="#10b981" style={{marginRight: '12px'}} />
-              <h2 style={{fontSize: '1.25rem', fontWeight: '600', margin: 0}}>Step 4: Extracted Data Preview</h2>
+              <h2 style={{fontSize: '1.25rem', fontWeight: '600', margin: 0}}>
+                Step 4: Extracted Data Preview {isMultipleMode ? '(Combined from all documents)' : ''}
+              </h2>
             </div>
             
             <div style={{marginBottom: '1rem'}}>
@@ -276,13 +439,13 @@ const DocumentAssistant = () => {
                   <tbody>
                     {extractedData.preview.map((row, idx) => (
                       <tr key={idx} style={{borderBottom: '1px solid #e5e7eb'}}>
-                        {row.map((cell, cellIdx) => (
+                        {extractedData.columns.map((col, cellIdx) => (
                           <td key={cellIdx} style={{
                             padding: '12px 16px',
                             fontSize: '14px',
                             color: '#1f2937'
                           }}>
-                            {cell}
+                            {typeof row === 'object' ? row[col] : row[cellIdx] || ''}
                           </td>
                         ))}
                       </tr>
@@ -293,7 +456,7 @@ const DocumentAssistant = () => {
               
               <div style={{display: 'flex', gap: '1rem', paddingTop: '1rem'}}>
                 <button
-                  onClick={() => alert('Excel file downloaded!')}
+                  onClick={() => downloadExcel()}
                   style={{
                     ...styles.button,
                     backgroundColor: '#059669'
@@ -353,7 +516,7 @@ const DocumentAssistant = () => {
                 </div>
                 
                 <button
-                  onClick={() => alert('Report downloaded!')}
+                  onClick={() => downloadReport()}
                   style={styles.button}
                 >
                   <Download size={16} />
